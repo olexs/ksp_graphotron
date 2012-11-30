@@ -1,10 +1,13 @@
-Graphotron 2000 v0.1.1 alpha
-============================
+Graphotron 2000 v0.1.2
+======================
 The Graphotron 2000 is a part and a plugin for KSP used to plot sensor output and flight information.
 
 Changelog
 ---------
+v0.1.2: Added dynamic pressure graph
+
 v0.1.1: Initial _working_ release
+
 v0.1: Initial release
 
 Installation

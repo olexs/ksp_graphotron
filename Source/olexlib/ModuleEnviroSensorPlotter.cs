@@ -38,6 +38,7 @@ namespace olexlib
 		private const int DATA_VELOCITY_ORBIT = 1002;
 		private const int DATA_ALTITUDE = 1003;
 		private const int DATA_ALTITUDE_ASL = 1004;
+		private const int DATA_DYNAMIC_PRESSURE = 1005;
 
 		private Rect windowPositionMain;
 		private Rect windowPositionSources;
@@ -45,19 +46,16 @@ namespace olexlib
 		Texture2D plot = new Texture2D(296, 128, TextureFormat.ARGB32, false);
 
 		private static UnityEngine.Color[] graphColors = {
-			XKCDColors.SkyBlue,
 			XKCDColors.Yellow,
 			XKCDColors.White,
 			XKCDColors.Pink,
 			XKCDColors.Beige,
 			XKCDColors.Purple,
-			XKCDColors.SkyBlue,
 			XKCDColors.Yellow,
 			XKCDColors.White,
 			XKCDColors.Pink,
 			XKCDColors.Beige,
 			XKCDColors.Purple,
-			XKCDColors.SkyBlue,
 			XKCDColors.Yellow,
 			XKCDColors.White,
 			XKCDColors.Pink,
@@ -74,6 +72,7 @@ namespace olexlib
 			sensorColors[DATA_VELOCITY_ORBIT] = XKCDColors.Orange;
 			sensorColors[DATA_ALTITUDE] = XKCDColors.Lime;
 			sensorColors[DATA_ALTITUDE_ASL] = XKCDColors.Green;
+			sensorColors[DATA_DYNAMIC_PRESSURE] = XKCDColors.SkyBlue;
 
 			// clear texture
 			for (int x = 0; x < 296; x++)
@@ -200,8 +199,9 @@ namespace olexlib
 
 			activeSensors[DATA_ALTITUDE] = false;
 			activeSensors[DATA_ALTITUDE_ASL] = true;
-			activeSensors[DATA_VELOCITY_ORBIT] = true;
-			activeSensors[DATA_VELOCITY_SURFACE] = false;
+			activeSensors[DATA_VELOCITY_ORBIT] = false;
+			activeSensors[DATA_VELOCITY_SURFACE] = true;
+			activeSensors[DATA_DYNAMIC_PRESSURE] = true;
 
 			this.part.force_activate();
 		}
@@ -249,16 +249,19 @@ namespace olexlib
 						// get basic data values
 						switch (sensorID) {
 						case DATA_ALTITUDE:
-							currentReading = part.vessel.heightFromTerrain;
+							currentReading = vessel.heightFromTerrain;
 							break;
 						case DATA_ALTITUDE_ASL:
-							currentReading = (float)part.vessel.altitude;
+							currentReading = (float)vessel.altitude;
 							break;
 						case DATA_VELOCITY_ORBIT:
-							currentReading = (float)part.vessel.obt_velocity.magnitude;
+							currentReading = (float)vessel.obt_velocity.magnitude;
 							break;
 						case DATA_VELOCITY_SURFACE:
-							currentReading = (float)part.vessel.srf_velocity.magnitude;
+							currentReading = (float)vessel.srf_velocity.magnitude;
+							break;
+						case DATA_DYNAMIC_PRESSURE:
+							currentReading = (float)(vessel.srf_velocity.magnitude * vessel.srf_velocity.magnitude * vessel.atmDensity * 0.5);
 							break;
 						}
 					}
@@ -394,6 +397,8 @@ namespace olexlib
 			activeSensors[DATA_ALTITUDE] = GUILayout.Toggle(activeSensors[DATA_ALTITUDE], "Altitude (surface)");
 			GUI.color = sensorColors[DATA_ALTITUDE_ASL];
 			activeSensors[DATA_ALTITUDE_ASL] = GUILayout.Toggle(activeSensors[DATA_ALTITUDE_ASL], "Altitude (above sea level)");
+			GUI.color = sensorColors[DATA_DYNAMIC_PRESSURE];
+			activeSensors[DATA_DYNAMIC_PRESSURE] = GUILayout.Toggle(activeSensors[DATA_DYNAMIC_PRESSURE], "Dynamic pressure (q)");
 			
 			foreach (Part sensor in availableSensors.Values) {
 				GUI.color = sensorColors[sensor.GetInstanceID()];
