@@ -16,5 +16,6 @@ Global
 	EndGlobalSection
 	GlobalSection(MonoDevelopProperties) = preSolution
 		StartupItem = olexlib\olexlib.csproj
+		outputpath = C:\Games\KSP_win\Plugins
 	EndGlobalSection
 EndGlobal
