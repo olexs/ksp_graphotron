@@ -45,12 +45,16 @@
     </Reference>
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.Linq" />
+    <Reference Include="MuMechLib">
+      <HintPath>C:\Games\KSP_win\Plugins\MuMechLib.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="HybridRocketEngine.cs" />
     <Compile Include="ModuleEnviroSensorPlotter.cs" />
     <Compile Include="DataSource.cs" />
+    <Compile Include="FontManager.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -19,6 +19,10 @@ namespace olexlib
 
 		[KSPField]
 		private bool isPlotting = false;
+		[KSPField]
+		private bool printMinMax = true;
+		[KSPField]
+		private bool printLegend = false;
 
 		[KSPField]
 		private float plotDelay = 0.5f;
@@ -27,56 +31,34 @@ namespace olexlib
 		public float powerConsumption = 0.02f;
 
 		[KSPField]
+		private bool activateOnStaging = false;
+
+		[KSPField]
 		private int dataPoints = 256;
 		[KSPField]
 		private int chartHeight = 128;
 		[KSPField]
-		private bool largeFont = false;
+		private bool largeFont = true;
 
 		private float lastPlotted = -1f;
+		private int lastObservedStage = -1;
+
 		private string strPlotDelay;
 		private string strChartHeight;
 		private string strDataPoints;
 		
-		private Dictionary<int, LinkedList<float>> plotData = new Dictionary<int, LinkedList<float>>();
-
-		private SortedDictionary<int, Part> availableSensors = new SortedDictionary<int, Part>();
-		private Dictionary<int, bool> activeSensors = new Dictionary<int, bool>();
-		private Dictionary<int, Color> sensorColors = new Dictionary<int, Color>();
-		private Dictionary<int, string> sensorNames = new Dictionary<int, string>();
+		private List<DataSource> sources = new List<DataSource>();
 
 		private Dictionary<char, bool[]> fontSmall = new Dictionary<char, bool[]>();
 		private Dictionary<char, bool[]> fontLarge = new Dictionary<char, bool[]>();
 
-		private const int DATA_VELOCITY_SURFACE = 1001;
-		private const int DATA_VELOCITY_ORBIT = 1002;
-		private const int DATA_ALTITUDE = 1003;
-		private const int DATA_ALTITUDE_ASL = 1004;
-		private const int DATA_DYNAMIC_PRESSURE = 1005;
-
 		private Rect windowPositionMain;
 		private Rect windowPositionSources;
 		private Rect windowPositionOptions;
+		private Dictionary<string, bool> collapsedCategories = new Dictionary<string, bool>();
 
 		Texture2D plot;
 
-		private static UnityEngine.Color[] graphColors = {
-			XKCDColors.Yellow,
-			XKCDColors.White,
-			XKCDColors.Pink,
-			XKCDColors.Beige,
-			XKCDColors.Purple,
-			XKCDColors.Yellow,
-			XKCDColors.White,
-			XKCDColors.Pink,
-			XKCDColors.Beige,
-			XKCDColors.Purple,
-			XKCDColors.Yellow,
-			XKCDColors.White,
-			XKCDColors.Pink,
-			XKCDColors.Beige,
-			XKCDColors.Purple
-		};
 
 		private int getFontHeight() {
 			return largeFont ? 7 : 5;
@@ -87,28 +69,32 @@ namespace olexlib
 		}
 
 		private int getChartWidth () {
-			return dataPoints + 10 * (getFontWidth()+1);
+			return dataPoints 
+				+ (printMinMax ? 10 * (getFontWidth()+1) : 0)
+				+ getLegendWidth();
 		}
+
+		private int getLongestLabelLength () {
+			int max = 0;
+			foreach (DataSource src in sources)
+				if (src.isActive && src.name.Length > max)
+					max = src.name.Length;
+			return max;
+		}
+
+		private int getLegendWidth ()
+		{
+			return printLegend && largeFont ? getLongestLabelLength() * (getFontWidth()+1) + 2 : 0;
+		}
+
 
 		public ModuleEnviroSensorPlotter ()
 		{
-			plot = new Texture2D(getChartWidth(), chartHeight, TextureFormat.ARGB32, false);
+			plot = new Texture2D (getChartWidth (), chartHeight, TextureFormat.ARGB32, false);
 
-			windowPositionMain = new Rect(Screen.width * 0.65f, 30, 10, 10);
-			windowPositionSources = new Rect(Screen.width * 0.65f, 320, 10, 10);
-			windowPositionOptions = new Rect(Screen.width * 0.65f - 220, 320, 10, 10);
-
-			sensorColors[DATA_VELOCITY_SURFACE] = XKCDColors.Red;
-			sensorColors[DATA_VELOCITY_ORBIT] = XKCDColors.Orange;
-			sensorColors[DATA_ALTITUDE] = XKCDColors.Lime;
-			sensorColors[DATA_ALTITUDE_ASL] = XKCDColors.Green;
-			sensorColors[DATA_DYNAMIC_PRESSURE] = XKCDColors.SkyBlue;
-
-			sensorNames[DATA_VELOCITY_SURFACE] = "Velocity (surface)";
-			sensorNames[DATA_VELOCITY_ORBIT] = "Velocity (orbit)";
-			sensorNames[DATA_ALTITUDE] = "Altitude (surface)";
-			sensorNames[DATA_ALTITUDE_ASL] = "Altitude (above sea level)";
-			sensorNames[DATA_DYNAMIC_PRESSURE] = "Dynamic pressure (q)";
+			windowPositionMain = new Rect (Screen.width * 0.65f, 30, 10, 10);
+			windowPositionSources = new Rect (Screen.width * 0.65f, 320, 10, 10);
+			windowPositionOptions = new Rect (Screen.width * 0.65f - 220, 320, 10, 10);
 
 			// clear texture
 			for (int x = 0; x < getChartWidth(); x++)
@@ -213,123 +199,7 @@ namespace olexlib
 				false, 	false, 	false
 			};
 
-			fontLarge['0'] = new bool[] { 
-				false, 	true, 	true, 	true, 	false,
-				true,	false,	false,	false,	true,
-				true,	false,	false,	true,	true,
-				true,	false,	true,	false,	true,
-				true,	true,	false,	false,	true,
-				true,	false,	false,	false,	true,
-				false, 	true, 	true, 	true, 	false
-			};
-			fontLarge['1'] = new bool[] { 
-				false, 	false, 	true, 	false, 	false,
-				false,	true,	true,	false,	false,
-				false,	false,	true,	false,	false,
-				false,	false,	true,	false,	false,
-				false,	false,	true,	false,	false,
-				false,	false,	true,	false,	false,
-				false, 	true, 	true, 	true, 	false
-			};
-			fontLarge['2'] = new bool[] { 
-				false, 	true, 	true, 	true, 	false,
-				true,	false,	false,	false,	true,
-				false,	false,	false,	false,	true,
-				false,	false,	false,	true,	false,
-				false,	false,	true,	false,	false,
-				false,	true,	false,	false,	false,
-				true, 	true, 	true, 	true, 	true
-			};
-			fontLarge['3'] = new bool[] { 
-				true, 	true, 	true, 	true, 	true,
-				false,	false,	false,	true,	false,
-				false,	false,	true,	false,	false,
-				false,	false,	false,	true,	false,
-				false,	false,	false,	false,	true,
-				true,	false,	false,	false,	true,
-				false, 	true, 	true, 	true, 	false
-			};
-			fontLarge['4'] = new bool[] { 
-				false, 	false, 	false, 	true, 	false,
-				false,	false,	true,	true,	false,
-				false,	true,	false,	true,	false,
-				true,	false,	false,	true,	false,
-				true,	true,	true,	true,	true,
-				false,	false,	false,	true,	false,
-				false, 	false, 	false, 	true, 	false
-			};
-			fontLarge['5'] = new bool[] { 
-				true, 	true, 	true, 	true, 	true,
-				true,	false,	false,	false,	false,
-				true,	true,	true,	true,	false,
-				false,	false,	false,	false,	true,
-				false,	false,	false,	false,	true,
-				true,	false,	false,	false,	true,
-				false, 	true, 	true, 	true, 	false
-			};
-			fontLarge['6'] = new bool[] { 
-				false, 	false, 	true, 	true, 	false,
-				false,	true,	false,	false,	false,
-				true,	false,	false,	false,	false,
-				true,	true,	true,	true,	false,
-				true,	false,	false,	false,	true,
-				true,	false,	false,	false,	true,
-				false, 	true, 	true, 	true, 	false
-			};
-			fontLarge['7'] = new bool[] { 
-				true, 	true, 	true, 	true, 	true,
-				false,	false,	false,	false,	true,
-				false,	false,	false,	true,	false,
-				false,	false,	true,	false,	false,
-				false,	true,	false,	false,	false,
-				false,	true,	false,	false,	false,
-				false, 	true, 	false, 	false, 	false
-			};
-			fontLarge['8'] = new bool[] { 
-				false, 	true, 	true, 	true, 	false,
-				true,	false,	false,	false,	true,
-				true,	false,	false,	false,	true,
-				false,	true,	true,	true,	false,
-				true,	false,	false,	false,	true,
-				true,	false,	false,	false,	true,
-				false, 	true, 	true, 	true, 	false
-			};
-			fontLarge['9'] = new bool[] { 
-				false, 	true, 	true, 	true, 	false,
-				true,	false,	false,	false,	true,
-				true,	false,	false,	false,	true,
-				false,	true,	true,	true,	true,
-				false,	false,	false,	false,	true,
-				false,	false,	false,	true,	false,
-				false, 	true, 	true, 	false, 	false
-			};
-			fontLarge['.'] = new bool[] { 
-				false, 	false, 	false, 	false, 	false,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				false,	true,	true,	false,	false,
-				false, 	true, 	true, 	false, 	false
-			};
-			fontLarge['-'] = new bool[] { 
-				false, 	false, 	false, 	false, 	false,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				true,	true,	true,	true,	true,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				false, 	false, 	false, 	false, 	false
-			};
-			fontLarge[' '] = new bool[] { 
-				false, 	false, 	false, 	false, 	false,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				false,	false,	false,	false,	false,
-				false, 	false, 	false, 	false, 	false
-			};
+			fontLarge = FontManager.LargeFont.CharDict;
 		}
 
 		[KSPEvent(guiActive = true, guiName = "Show/Hide Graphotron UI")]
@@ -338,35 +208,77 @@ namespace olexlib
 			isWindowShownMain = !isWindowShownMain;
 		}
 
+		[KSPAction("Toggle Graphotron UI")]
+		public void ActionToggleUI (KSPActionParam param) {
+			TogglePlotterUI();
+		}
+
+		[KSPAction("Toggle plotting")]
+		public void ActionTogglePlotting (KSPActionParam param) {
+			isPlotting = !isPlotting;
+		}
+
 		public override void OnStart (StartState state)
 		{
 			base.OnStart (state);
+
+			if (state == StartState.Editor)
+				return;
+
 			RenderingManager.AddToPostDrawQueue (3, DrawGUI);
 
+			lastObservedStage = vessel.currentStage;
+
+			// add basic sensors to list
+			sources.Add (new VesselInfoSource ("Flight data", "Velocity (surface)", 		() => (float)vessel.srf_velocity.magnitude));
+			sources.Add (new VesselInfoSource ("Flight data", "Velocity (orbit)", 			() => (float)vessel.obt_velocity.magnitude));
+			sources.Add (new VesselInfoSource ("Flight data", "Altitude (surface)", 		() => vessel.heightFromTerrain));
+			sources.Add (new VesselInfoSource ("Flight data", "Altitude (above sea level)",	() => (float)vessel.altitude));
+			sources.Add (new VesselInfoSource ("Flight data", "Dynamic pressure (q)", 		
+			                                   () => (float)(vessel.srf_velocity.magnitude * vessel.srf_velocity.magnitude * vessel.atmDensity * 0.5)));
+
+			sources.Add (new VesselInfoSource ("Flight data", "Total vehicle mass",			() => (float)vessel.GetTotalMass()));
+			sources.Add (new VesselInfoSource ("Flight data", "Angle of attack",			() => Vector3.Angle(vessel.transform.up, vessel.srf_velocity)));
+
 			// find available sensors
-			availableSensors.Clear();
-			activeSensors.Clear();
-			int nextColor = 0;
 			foreach (Part part in this.part.vessel.parts.Where (p => p.Modules.OfType<ModuleEnviroSensor> ().Any ())) {
-				availableSensors[part.GetInstanceID()] = part;
-				activeSensors[part.GetInstanceID()] = false;
-				sensorColors[part.GetInstanceID()] = graphColors[nextColor++];
-				sensorNames[part.GetInstanceID()] = part.partInfo.title;
+				sources.Add (new SensorSource (part));
 			}
 
-			activeSensors[DATA_ALTITUDE] = false;
-			activeSensors[DATA_ALTITUDE_ASL] = true;
-			activeSensors[DATA_VELOCITY_ORBIT] = false;
-			activeSensors[DATA_VELOCITY_SURFACE] = true;
-			activeSensors[DATA_DYNAMIC_PRESSURE] = true;
+			// add resource data sources
+			List<string> resourceNames = new List<string> ();
+			foreach (Part p in vessel.parts) {
+				foreach (PartResource pr in p.Resources) {
+					if (!resourceNames.Contains (pr.resourceName))
+						resourceNames.Add (pr.resourceName);
+				}
+			}
+			resourceNames.Sort ();
+			foreach (string resource in resourceNames)
+				sources.Add (new ResourceSource (resource, vessel));
+
+			// optional plugin data integration
+			/*Type mechjebCoreType = Type.GetType ("MuMechLib.MuMech.MechJebCore");
+			if (mechjebCoreType != null)
+				MonoBehaviour.print("Graphotron: Mechjeb found!");
+			else
+				MonoBehaviour.print("Graphotron: no Mechjeb found");*/
 
 			this.part.force_activate();
 		}
+
+
 
 		public override void OnUpdate ()
 		{
 			base.OnUpdate ();
 
+			if (vessel.currentStage != lastObservedStage && activateOnStaging) {
+				isPlotting = true;
+				activateOnStaging = false;
+				lastObservedStage = vessel.currentStage;
+			}
+			
 			// power consumption
 			if (isPlotting) {
 				float powerDemand = powerConsumption * TimeWarp.deltaTime;
@@ -389,72 +301,47 @@ namespace olexlib
 
 				int sensorNo = -1;
 
-				foreach (int sensorID in activeSensors.Keys) {
-					// acquire data
-					LinkedList<float> sensorData = plotData.ContainsKey(sensorID) ? plotData[sensorID] : new LinkedList<float>();
-					float minValue = (sensorData.Count > 0) ? sensorData.Min() : 0f;
-					float maxValue = (sensorData.Count > 0) ? sensorData.Max() : 1f;
-					float currentReading = 0f;
-
-					if (availableSensors.ContainsKey(sensorID)) {
-						// get data from a sensor
-						ModuleEnviroSensor sensor = availableSensors[sensorID].Modules.OfType<ModuleEnviroSensor>().First();
-						string cleanedValue = Regex.Replace(sensor.readoutInfo, @"([0-9]+\.?[0-9]*).*", "$1");
-						float.TryParse(cleanedValue, out currentReading);
-					} else {
-						// get basic data values
-						switch (sensorID) {
-						case DATA_ALTITUDE:
-							currentReading = vessel.heightFromTerrain;
-							break;
-						case DATA_ALTITUDE_ASL:
-							currentReading = (float)vessel.altitude;
-							break;
-						case DATA_VELOCITY_ORBIT:
-							currentReading = (float)vessel.obt_velocity.magnitude;
-							break;
-						case DATA_VELOCITY_SURFACE:
-							currentReading = (float)vessel.srf_velocity.magnitude;
-							break;
-						case DATA_DYNAMIC_PRESSURE:
-							currentReading = (float)(vessel.srf_velocity.magnitude * vessel.srf_velocity.magnitude * vessel.atmDensity * 0.5);
-							break;
-						}
-					}
-
-					if (currentReading < minValue) 
-						minValue = currentReading;
-					if (currentReading > maxValue) 
-						maxValue = currentReading;
-					sensorData.AddLast(currentReading);
-
-					// remove oldest entries until matching plot width
-					while (sensorData.Count > dataPoints)
-						sensorData.RemoveFirst();
+				foreach (DataSource source in sources) {
+					// acquire current data
+					source.fetchData();
+					source.trimData(dataPoints);
 
 					// plot data to texture
-					plotData[sensorID] = sensorData;
-					if (activeSensors[sensorID]) {
+					if (source.isActive) {
 						sensorNo++;
 
+						float minValue = source.getMinValue();
+						float maxValue = source.getMaxValue();
+
 						// graph
-						int x = getChartWidth() - sensorData.Count; // offset starting point
-						foreach (float dataPoint in sensorData) {
+						int x = getChartWidth() - getLegendWidth() - source.data.Count; // offset starting point
+						foreach (float dataPoint in source.data) {
 							if (dataPoint != float.NaN) {
 								int y = 4 + (int)Mathf.Round(((dataPoint - minValue) / (maxValue - minValue)) * (chartHeight - 8));
-								plot.SetPixel(x, y, sensorColors[sensorID]);
+								plot.SetPixel(x, y, source.color);
 							}
 							x++;
 						}
 
-						// min/max labels, formatting and positioning
-						string strMin = string.Format("{0,10:######0.00}", minValue);
-						int startY = 1 + sensorNo * (getFontHeight() + 1);
-						renderText(strMin, 0, startY, sensorColors[sensorID]);
+						// legend
+						if (printLegend && largeFont) {
+							renderText(source.name, 
+							           getChartWidth() - getLegendWidth() + 2, 
+							           chartHeight - getFontHeight() - 2 - sensorNo * (getFontHeight() + 1), 
+							           source.color);
+						}
 
-						string strMax = string.Format("{0,10:######0.00}", maxValue);
-						startY = chartHeight - getFontHeight() - 2 - sensorNo * (getFontHeight() + 1);
-						renderText(strMax, 0, startY, sensorColors[sensorID]);
+						// min/max values, formatting and positioning
+						if (printMinMax) {
+							string strMin = string.Format("{0,10:######0.00}", minValue);
+							int startX = 0;
+							int startY = 1 + sensorNo * (getFontHeight() + 1);
+							renderText(strMin, startX, startY, source.color);
+
+							string strMax = string.Format("{0,10:######0.00}", maxValue);
+							startY = chartHeight - getFontHeight() - 2 - sensorNo * (getFontHeight() + 1);
+							renderText(strMax, startX, startY, source.color);
+						}
 					}
 
 				}
@@ -489,11 +376,12 @@ namespace olexlib
 			string header = "Data point";
 			int exportDataPoints = dataPoints;
 			Dictionary<int, float[]> arrayData = new Dictionary<int, float[]>();
-			foreach (int sensorID in activeSensors.Keys) {
-				if (!activeSensors[sensorID])
+			foreach (DataSource source in sources) {
+				if (!source.isActive)
 					continue;
-				header += "\t" + sensorNames[sensorID];
-				arrayData[sensorID] = plotData[sensorID].ToArray();
+				int sensorID = source.GetHashCode();
+				header += "\t" + source.name;
+				arrayData[sensorID] = source.data.ToArray();
 				if (arrayData[sensorID].Length < exportDataPoints)
 					exportDataPoints = arrayData[sensorID].Length;
 			}
@@ -503,15 +391,16 @@ namespace olexlib
 			// output data
 			for (int i = 0; i < exportDataPoints; i++) {
 				string line = i.ToString();
-				foreach (int sensorID in activeSensors.Keys) {
-					if (!activeSensors[sensorID])
+				foreach (DataSource source in sources) {
+					if (!source.isActive)
 						continue;
+					int sensorID = source.GetHashCode();
 					line += "\t" + arrayData[sensorID][i].ToString();
 				}
 				line += "\n";
 				csvfile.Write(line);
 			}
-			
+
 			csvfile.Close();
 		}
 		
@@ -530,8 +419,8 @@ namespace olexlib
 															  windowPositionSources, 
 					                                          DrawWindowSources,
 					                                          "Graphotron Sources", 
-					                                          GUILayout.MinWidth (300),
-					                                          GUILayout.MinHeight (20));
+					                                          GUILayout.Width (280),
+					                                          GUILayout.Height (20));
 				}
 				if (isWindowShownOptions) {
 					windowPositionOptions = GUILayout.Window (423594, 
@@ -546,7 +435,7 @@ namespace olexlib
 
 		private string GetSourcesButtonText ()
 		{
-			return string.Format("{0} sources selected", activeSensors.Sum(kv => kv.Value ? 1 : 0));
+			return string.Format("{0} sources selected", sources.Sum(src => src.isActive ? 1 : 0));
 		}
 
 		private void DrawWindowMain (int windowID)
@@ -560,7 +449,9 @@ namespace olexlib
 			GUILayout.BeginHorizontal ();
 			isPlotting = GUILayout.Toggle (isPlotting, "Draw plot", new GUIStyle (GUI.skin.button), GUILayout.Width (halfWidth));
 			if (GUILayout.Button ("Reset plot", GUILayout.Width (halfWidth))) {
-				plotData = new Dictionary<int, LinkedList<float>>();
+				//plotData = new Dictionary<int, LinkedList<float>>();
+				foreach(DataSource src in sources)
+					src.clearData();
 			}
 			GUILayout.EndHorizontal ();
 
@@ -582,32 +473,60 @@ namespace olexlib
 
 			GUILayout.EndVertical();
 
-			GUI.DragWindow(new Rect(0, 0, 300, 60));
+			GUI.DragWindow(new Rect(0, 0, getChartWidth() + 4, 60));
 		}
 
 		private void DrawWindowSources (int windowID)
 		{
+			GUILayout.BeginHorizontal ();
 			GUILayout.BeginVertical();
 			
-			Color oldColor = GUI.color;
-			GUI.color = sensorColors[DATA_VELOCITY_SURFACE];
-			activeSensors[DATA_VELOCITY_SURFACE] = GUILayout.Toggle(activeSensors[DATA_VELOCITY_SURFACE], "Velocity (surface)");
-			GUI.color = sensorColors[DATA_VELOCITY_ORBIT];
-			activeSensors[DATA_VELOCITY_ORBIT] = GUILayout.Toggle(activeSensors[DATA_VELOCITY_ORBIT], "Velocity (orbit)");
-			GUI.color = sensorColors[DATA_ALTITUDE];
-			activeSensors[DATA_ALTITUDE] = GUILayout.Toggle(activeSensors[DATA_ALTITUDE], "Altitude (surface)");
-			GUI.color = sensorColors[DATA_ALTITUDE_ASL];
-			activeSensors[DATA_ALTITUDE_ASL] = GUILayout.Toggle(activeSensors[DATA_ALTITUDE_ASL], "Altitude (above sea level)");
-			GUI.color = sensorColors[DATA_DYNAMIC_PRESSURE];
-			activeSensors[DATA_DYNAMIC_PRESSURE] = GUILayout.Toggle(activeSensors[DATA_DYNAMIC_PRESSURE], "Dynamic pressure (q)");
-			
-			foreach (Part sensor in availableSensors.Values) {
-				GUI.color = sensorColors[sensor.GetInstanceID()];
-				activeSensors[sensor.GetInstanceID()] = GUILayout.Toggle(activeSensors[sensor.GetInstanceID()], sensor.partInfo.title);
+			Color baseColor = GUI.color;
+			string lastGroup = "";
+			int count = 0;
+			foreach (DataSource source in sources) {
+				if (source.group != lastGroup) {
+					GUI.color = baseColor;
+
+					if (!collapsedCategories.ContainsKey(source.group))
+						collapsedCategories[source.group] = false;
+
+					GUILayout.BeginHorizontal (GUILayout.Width(285));
+					GUILayout.Label(source.group, GUILayout.Width(255));
+					collapsedCategories[source.group] = !GUILayout.Toggle (!collapsedCategories[source.group], 
+					                                                      collapsedCategories[source.group] ? "+" : "-", 
+					                                                      new GUIStyle (GUI.skin.button), 
+					                                                      GUILayout.Width (20),
+					                                                      GUILayout.Height(20));
+					GUILayout.EndHorizontal ();
+
+					lastGroup = source.group;
+					count++;
+				}
+
+				if (!collapsedCategories[source.group]) {
+					GUILayout.BeginHorizontal (GUILayout.Width(285));
+					GUI.color = source.isActive ? source.color : baseColor;
+					source.setActive(GUILayout.Toggle(source.isActive, source.name, GUILayout.Width(230)));
+					if (source.isActive) {
+						if (GUILayout.Button ("Color", GUILayout.Width(45), GUILayout.Height(20)))
+							source.setNextColor();
+					}
+					GUILayout.EndHorizontal ();
+				}
+
+				count++;
+				if (count >= 100) {
+					GUILayout.EndVertical();
+					GUILayout.BeginVertical();
+					count = 0;
+					lastGroup = "";
+				}
 			}
-			GUI.color = oldColor;
+			GUI.color = baseColor;
 			
 			GUILayout.EndVertical();
+			GUILayout.EndHorizontal ();
 
 			GUI.DragWindow(new Rect(0, 0, 300, 60));
 		}
@@ -617,6 +536,11 @@ namespace olexlib
 			GUILayout.BeginVertical();
 
 			largeFont = GUILayout.Toggle (largeFont, "Use large font");
+			printMinMax = GUILayout.Toggle (printMinMax, "Print min/max values");
+			if (!largeFont)
+				GUI.enabled = false;
+			printLegend = GUILayout.Toggle (printLegend && largeFont, "Print legend");
+			GUI.enabled = true;
 
 			GUILayout.BeginHorizontal ();
 			GUILayout.Label ("Resolution: ", GUILayout.Width (80f));
@@ -645,9 +569,11 @@ namespace olexlib
 			}
 			GUILayout.EndHorizontal ();
 
+			activateOnStaging = GUILayout.Toggle (activateOnStaging, "Activate on next staging");
+
 			GUILayout.EndVertical();
 
-			GUI.DragWindow(new Rect(0, 0, 200, 60));
+			GUI.DragWindow(new Rect(0, 0, 280, 60));
 		}
 
 	}

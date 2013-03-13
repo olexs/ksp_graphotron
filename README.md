@@ -7,8 +7,11 @@ Changelog
 v0.2: Long-awaited update:
 - Resizeable graph area
 - Optional larger label font
+- Optional graph legend
 - CSV raw data export
 - Option to reset the plot
+- New data sources, including any resources
+- Toggle UI and plotting using action groups
 
 v0.1.2: Added dynamic pressure graph
 
@@ -40,7 +43,7 @@ If the "Draw plot" button keeps deactivating itself, check there is enough Elect
 
 Attributions
 ------------
-Thanks to DYJ for providing the awesome part model for the Graphotron!
+Thanks to DYJ for providing the awesome part model for the Graphotron, and to khyperia for the great pixel font!
 
 And a special thanks to Squad for making Kerbal Space Program, it's incredible.
 
